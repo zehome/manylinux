@@ -5,7 +5,7 @@
 set -ex
 
 # Python versions to be installed in /opt/$VERSION_NO
-CPYTHON_VERSIONS="2.7.14 3.3.7 3.4.7 3.5.4 3.6.4"
+CPYTHON_VERSIONS="2.7.15 3.3.7 3.4.7 3.5.4 3.6.4"
 
 # openssl version to build, with expected sha256 hash of .tar.gz
 # archive
@@ -19,9 +19,9 @@ DEVTOOLS_HASH=a8ebeb4bed624700f727179e6ef771dafe47651131a00a78b342251415646acc
 # https://github.com/NixOS/patchelf/commit/2a9cefd7d637d160d12dc7946393778fa8abbc58
 PATCHELF_VERSION=2a9cefd7d637d160d12dc7946393778fa8abbc58
 PATCHELF_HASH=12da4727f09be42ae0b54878e1b8e86d85cb7a5b595731cdc1a0a170c4873c6d
-CURL_ROOT=curl-7.58.0
-# https://github.com/Homebrew/homebrew-core/blob/b44c24272efdef9a3b2a54d8d8ab72dacfcd580f/Formula/curl.rb#L6
-CURL_HASH=1cb081f97807c01e3ed747b6e1c9fee7a01cb10048f1cd0b5f56cfe0209de731
+CURL_ROOT=curl-7.60.0
+# https://github.com/Homebrew/homebrew-core/blob/e3a8622111ecefe444194cade5cca3c69165e26c/Formula/curl.rb#L6
+CURL_HASH=897dfb2204bd99be328279f88f55b7c61592216b0542fcbe995c60aa92871e9b
 AUTOCONF_ROOT=autoconf-2.69
 AUTOCONF_HASH=954bd69b391edc12d6a4a51a2dd1476543da5c6bbf05a95b59dc0dd6fd4c2969
 AUTOMAKE_ROOT=automake-1.15
@@ -59,6 +59,8 @@ yum -y install wget curl
 # https://dl.fedoraproject.org/pub/epel/6/x86_64/epel-release-6-8.noarch.rpm
 cp $MY_DIR/epel-release-6-8.noarch.rpm .
 check_sha256sum epel-release-6-8.noarch.rpm $EPEL_RPM_HASH
+
+export SSL_CERT_FILE=/opt/_internal/certs.pem
 
 # Dev toolset (for LLVM and other projects requiring C++11 support)
 curl -fsSLO http://people.centos.org/tru/devtools-2/devtools-2.repo
@@ -103,6 +105,12 @@ rm -rf $SQLITE_AUTOCONF_VERSION*
 # against a recent openssl [see env vars above], which is linked
 # statically. We delete openssl afterwards.)
 build_openssl $OPENSSL_ROOT $OPENSSL_HASH
+build_curl $CURL_ROOT $CURL_HASH
+rm -rf /usr/local/include/curl /usr/local/lib/libcurl* /usr/local/lib/pkgconfig/libcurl.pc
+hash -r
+curl --version
+curl-config --features
+
 mkdir -p /opt/python
 build_cpythons $CPYTHON_VERSIONS
 
@@ -115,19 +123,11 @@ $PY36_BIN/pip install --require-hashes -r $MY_DIR/py36-requirements.txt
 #   (https://github.com/pypa/manylinux/issues/53)
 # And it's not clear how up-to-date that is anyway
 # So let's just use the same one pip and everyone uses
+rm /opt/_internal/certs.pem
 ln -s $($PY36_BIN/python -c 'import certifi; print(certifi.where())') \
       /opt/_internal/certs.pem
 # If you modify this line you also have to modify the versions in the
 # Dockerfiles:
-export SSL_CERT_FILE=/opt/_internal/certs.pem
-
-# Install newest curl
-build_curl $CURL_ROOT $CURL_HASH
-rm -rf /usr/local/include/curl /usr/local/lib/libcurl* /usr/local/lib/pkgconfig/libcurl.pc
-hash -r
-curl --version
-curl-config --features
-
 # Now we can delete our built SSL
 rm -rf /usr/local/ssl
 

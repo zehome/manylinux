@@ -2,8 +2,8 @@
 # Helper utilities for build
 
 PYTHON_DOWNLOAD_URL=https://www.python.org/ftp/python
-OPENSSL_DOWNLOAD_URL=https://www.openssl.org/source
-CURL_DOWNLOAD_URL=https://curl.haxx.se/download
+OPENSSL_DOWNLOAD_URL=http://ftp.openssl.org/source
+CURL_DOWNLOAD_URL=http://mirror.clarisys.fr/curl
 
 GET_PIP_URL=https://bootstrap.pypa.io/get-pip.py
 
@@ -34,6 +34,8 @@ function do_cpython_build {
     check_var $py_ver
     local ucs_setting=$2
     check_var $ucs_setting
+    local py_shared=$3
+    check_var $py_shared
     tar -xzf Python-$py_ver.tgz
     pushd Python-$py_ver
     if [ "$ucs_setting" = "none" ]; then
@@ -43,13 +45,22 @@ function do_cpython_build {
         local unicode_flags="--enable-unicode=$ucs_setting"
         local dir_suffix="-$ucs_setting"
     fi
+    if [ "$py_shared" = "1" ]; then
+        configure_shared="--enable-shared"
+        dir_suffix="$dir_suffix-shared"
+    else
+        configure_shared="--disable-shared"
+    fi
     local prefix="/opt/_internal/cpython-${py_ver}${dir_suffix}"
     mkdir -p ${prefix}/lib
-    ./configure --prefix=${prefix} --disable-shared $unicode_flags > /dev/null
-    make -j2 > /dev/null
+    CPUS=2
+    [ -f /proc/cpuinfo ] && CPUS=$(cat /proc/cpuinfo|grep MHz|wc -l)
+    ./configure --prefix=${prefix} $configure_shared $unicode_flags > /dev/null
+    make -j$CPUS
     make install > /dev/null
     popd
     rm -rf Python-$py_ver
+    local LD_LIBRARY_PATH=${prefix}/lib:$LD_LIBRARY_PATH
     # Some python's install as bin/python3. Make them available as
     # bin/python.
     if [ -e ${prefix}/bin/python3 ]; then
@@ -61,6 +72,7 @@ function do_cpython_build {
     fi
     # Since we fall back on a canned copy of get-pip.py, we might not have
     # the latest pip and friends. Upgrade them to make sure.
+    ${prefix}/bin/pip install -U pip
     ${prefix}/bin/pip install -U --require-hashes -r ${MY_DIR}/requirements.txt
     local abi_tag=$(${prefix}/bin/python ${MY_DIR}/python-tag-abi-tag.py)
     ln -s ${prefix} /opt/python/${abi_tag}
@@ -69,16 +81,17 @@ function do_cpython_build {
 
 function build_cpython {
     local py_ver=$1
+    local py_shared=$2
     check_var $py_ver
     check_var $PYTHON_DOWNLOAD_URL
     curl -fsSLO $PYTHON_DOWNLOAD_URL/$py_ver/Python-$py_ver.tgz
     curl -fsSLO $PYTHON_DOWNLOAD_URL/$py_ver/Python-$py_ver.tgz.asc
     gpg --verify Python-$py_ver.tgz.asc
     if [ $(lex_pyver $py_ver) -lt $(lex_pyver 3.3) ]; then
-        do_cpython_build $py_ver ucs2
-        do_cpython_build $py_ver ucs4
+        do_cpython_build $py_ver ucs2 $py_shared
+        do_cpython_build $py_ver ucs4 $py_shared
     else
-        do_cpython_build $py_ver none
+        do_cpython_build $py_ver none $py_shared
     fi
     rm -f Python-$py_ver.tgz
     rm -f Python-$py_ver.tgz.asc
@@ -95,7 +108,8 @@ function build_cpythons {
     # https://www.python.org/static/files/pubkeys.txt
     gpg --import ${MY_DIR}/cpython-pubkeys.txt
     for py_ver in $@; do
-        build_cpython $py_ver
+        build_cpython $py_ver 0 # Non shared
+        build_cpython $py_ver 1 # Shared
     done
     # Remove GPG hidden directory.
     rm -rf /root/.gnupg/
