@@ -75,7 +75,11 @@ function do_cpython_build {
     ${prefix}/bin/pip install -U pip
     ${prefix}/bin/pip install -U --require-hashes -r ${MY_DIR}/requirements.txt
     local abi_tag=$(${prefix}/bin/python ${MY_DIR}/python-tag-abi-tag.py)
-    ln -s ${prefix} /opt/python/${abi_tag}
+    if [ "$py_shared" = "1" ]; then
+        ln -s ${prefix} /opt/python-shared/${abi_tag}
+    else
+        ln -s ${prefix} /opt/python/${abi_tag}
+    fi
 }
 
 

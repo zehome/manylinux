@@ -111,7 +111,7 @@ hash -r
 curl --version
 curl-config --features
 
-mkdir -p /opt/python
+mkdir -p /opt/python /opt/python-shared
 build_cpythons $CPYTHON_VERSIONS
 
 PY36_BIN=/opt/python/cp36-cp36m/bin
@@ -162,12 +162,17 @@ find /opt/_internal \
   -o \( -type f -a -name '*.pyc' -o -name '*.pyo' \) \
   -print0 | xargs -0 rm -f
 
-for PYTHON in /opt/python/*/bin/python; do
+for PYVER in /opt/python/* /opt/python-shared/*; do
     # Smoke test to make sure that our Pythons work, and do indeed detect as
     # being manylinux compatible:
-    $PYTHON $MY_DIR/manylinux1-check.py
-    # Make sure that SSL cert checking works
-    $PYTHON $MY_DIR/ssl-check.py
+    # Subshell to avoid leaking LD_LIBRARY_PATH
+    (
+        LD_LIBRARY_PATH=$PYVER/lib:$LD_LIBRARY_PATH
+        PYTHON=$PYVER/bin/python
+        $PYTHON $MY_DIR/manylinux1-check.py
+        # Make sure that SSL cert checking works
+        $PYTHON $MY_DIR/ssl-check.py
+    )
 done
 
 # Fix libc headers to remain compatible with C99 compilers.
